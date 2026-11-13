@@ -3,6 +3,7 @@
 -- job result card, and the Phone button that opens the menus.
 
 local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
 
@@ -112,6 +113,9 @@ local function build()
 
 	-- Studio memory-mode banner
 	refs.banner = Theme.label({ Parent = gui, Text = "STUDIO TEST MODE - progress not saved", TextSize = 13, TextColor3 = colors.warn, AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -4), Size = UDim2.fromOffset(400, 16), Visible = false })
+
+	-- speedometer (only while driving)
+	refs.speed = Theme.label({ Parent = gui, Text = "", TextSize = 30, TextColor3 = colors.text, TextStrokeTransparency = 0.4, AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -24), Size = UDim2.fromOffset(200, 34), Visible = false })
 
 	-- result card
 	local result = panel({ Parent = gui, Name = "Result", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.45), Size = UDim2.fromOffset(380, 220), Visible = false, ZIndex = 5 })
@@ -235,6 +239,18 @@ function HUD.start()
 	Store.on("toast", toast)
 	Store.on("jobResult", showResult)
 	renderState(Store.state)
+	RunService.RenderStepped:Connect(function()
+		local hum = Players.LocalPlayer.Character and Players.LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+		local seat = hum and hum.SeatPart
+		if seat and seat:IsA("VehicleSeat") then
+			local v = seat.AssemblyLinearVelocity
+			-- shown in studs/s, the same unit as the car stats in the Car Lot
+			refs.speed.Text = string.format("%d", math.floor(Vector3.new(v.X, 0, v.Z).Magnitude + 0.5))
+			refs.speed.Visible = true
+		else
+			refs.speed.Visible = false
+		end
+	end)
 end
 
 return HUD

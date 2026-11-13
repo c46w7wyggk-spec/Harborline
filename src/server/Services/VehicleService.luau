@@ -191,6 +191,26 @@ local function build(player: Player, def: Progression.VehicleDef, cf: CFrame): M
 		pcall(chassis.SetNetworkOwner, chassis, player)
 	end)
 
+	-- "Drive" prompt: reliable way in on every platform (touching the seat is fiddly on phones).
+	local drive = Instance.new("ProximityPrompt")
+	drive.Name = "DrivePrompt"
+	drive.ActionText = "Drive"
+	drive.ObjectText = def.name
+	drive.KeyboardKeyCode = Enum.KeyCode.E
+	drive.GamepadKeyCode = Enum.KeyCode.ButtonX
+	drive.MaxActivationDistance = 12
+	drive.RequiresLineOfSight = false
+	drive.Parent = chassis
+	drive.Triggered:Connect(function(who)
+		if who ~= player or seat.Occupant then
+			return
+		end
+		local hum = who.Character and who.Character:FindFirstChildOfClass("Humanoid")
+		if hum and hum.Health > 0 and not hum.SeatPart then
+			seat:Sit(hum)
+		end
+	end)
+
 	model.Parent = carsFolder
 	return model
 end

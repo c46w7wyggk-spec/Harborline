@@ -1,0 +1,29 @@
+name: checks
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache Rust tools
+        id: tools
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin
+          key: roblox-tools-rojo7.7.1-lune0.11.1-v1
+      - name: Install rojo, stylua, lune
+        if: steps.tools.outputs.cache-hit != 'true'
+        run: |
+          cargo install --locked rojo --version 7.7.1
+          cargo install --locked stylua
+          cargo install --locked lune --version 0.11.1
+      - name: Run checks
+        run: ./scripts/check.sh
+      - name: Upload place file
+        uses: actions/upload-artifact@v4
+        with:
+          name: Harborline-place
+          path: build/Harborline.rbxlx

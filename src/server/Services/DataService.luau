@@ -128,7 +128,15 @@ local function finishLoad(player: Player, data: Schema.Profile, canSave: boolean
 	end
 end
 
+-- userIds whose leave-save is still in flight on this server. A quick rejoin to the *same*
+-- server must wait for it, otherwise it would load the pre-leave copy (our own lock looks valid).
+local releasing: { [number]: boolean } = {}
+
 local function load(player: Player)
+	local waitUntil = os.clock() + 30
+	while releasing[player.UserId] and os.clock() < waitUntil do
+		task.wait(0.25)
+	end
 	local now = os.time()
 	local ds = getStore()
 	if DataService.memoryMode or not ds then
@@ -290,8 +298,10 @@ function DataService.release(player: Player)
 	if not s then
 		return
 	end
+	releasing[player.UserId] = true
+	sessions[player] = nil -- no further autosaves/urgent saves for this session
 	save(s, true)
-	sessions[player] = nil
+	releasing[player.UserId] = nil
 end
 
 function DataService.start()
@@ -323,7 +333,7 @@ function DataService.start()
 			end)
 		end
 		local deadline = os.clock() + 25
-		while pending > 0 and os.clock() < deadline do
+		while (pending > 0 or next(releasing) ~= nil) and os.clock() < deadline do
 			task.wait(0.2)
 		end
 	end)

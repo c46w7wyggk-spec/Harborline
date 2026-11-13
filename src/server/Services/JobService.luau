@@ -177,7 +177,7 @@ local function startJob(player: Player, jobId: string): (boolean, string?)
 	if jobId == "courier" then
 		job = JobModules.courier.new(p, now, function(n)
 			return rng:NextInteger(1, n)
-		end)
+		end, flatPos(root))
 	else
 		job = JobModules[jobId].new(p, now)
 	end
