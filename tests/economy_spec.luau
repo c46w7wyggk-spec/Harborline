@@ -98,7 +98,7 @@ return function(t)
 
 		t.test("business upgrade, accrual to cap, collect", function()
 			local p = Schema.default(NOW)
-			p.cash = 500
+			p.cash = 400
 			t.eq((Economy.upgradeBusiness(p)), true)
 			t.eq(p.cash, 0)
 			t.eq(p.business.level, 1)
@@ -118,6 +118,18 @@ return function(t)
 			t.eq((Economy.upgradeBusiness(p)), false, "level 2 needs rep 3")
 		end)
 
+		t.test("the first Courier Run always affords the first purchase (tutorial promise)", function()
+			local p = Schema.default(NOW)
+			local Courier = t.Loader.require("src/server/Jobs/Courier")
+			local job = Courier.new(p, 0, function()
+				return 1
+			end)
+			-- worst case: delivered with 1 second left
+			local raw = Economy.courierRaw(p, 1, job.timeLimit, job.distanceFactor)
+			local cash = Economy.finalReward(p, "courier", raw, 0)
+			t.truthy(cash >= Prog.Business.levels[1].cost, string.format("first run pays %d", cash))
+		end)
+
 		t.test("courier bonus from business", function()
 			local p = Schema.default(NOW)
 			p.business.level = 4
@@ -129,7 +141,7 @@ return function(t)
 			local p = Schema.default(NOW)
 			t.eq(Economy.nextGoal(p, NOW).target, "JobBoard")
 			p.firstRunDone.courier = true
-			p.cash = 600
+			p.cash = 450
 			local g = Economy.nextGoal(p, NOW)
 			t.eq(g.kind, "buy")
 			t.truthy(string.find(g.text, "Noodle Cart"))

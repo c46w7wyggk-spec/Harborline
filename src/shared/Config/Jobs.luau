@@ -21,7 +21,7 @@ local Jobs: { [string]: JobDef } = {
 		id = "courier",
 		name = "Courier Run",
 		blurb = "Grab parcels at the Depot and drop them at 3 addresses before time runs out.",
-		timeLimit = 210,
+		timeLimit = 360, -- cap; each run's limit is sized to its route (walkable)
 		minSeconds = 15,
 		cooldown = 5,
 		abandonCooldown = 10,
@@ -50,7 +50,7 @@ local Jobs: { [string]: JobDef } = {
 		timeLimit = 300, -- whole job (reach mint + crack + delivery)
 		minSeconds = 15,
 		cooldown = 600,
-		abandonCooldown = 300,
+		abandonCooldown = 600, -- never cheaper to bail out than to fail
 		repLevel = 3,
 		requiresVehicle = false,
 		usesFreshness = false, -- the cooldown limits this job
@@ -69,6 +69,7 @@ Config.Courier = {
 	baseCash = 240,
 	rep = 16,
 	stopRadius = 24,
+	firstRunMinCash = 400, -- tutorial promise: the first delivery always affords the Noodle Cart
 	depotRadius = 24,
 }
 

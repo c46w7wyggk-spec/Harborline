@@ -60,20 +60,24 @@ end
 
 -- Upgrade older saves to the current version. Unknown future versions are returned as nil so the
 -- caller can refuse to load (and never overwrite) data written by a newer build.
-function Schema.migrate(data: any): any?
+-- Returns (data, nil) or (nil, "corrupt" | "newer").
+function Schema.migrate(data: any): (any?, string?)
 	if type(data) ~= "table" then
-		return nil
+		return nil, "corrupt"
 	end
 	local version = data.schema
 	if version == nil then
 		version = 1 -- pre-versioned dev saves
 	end
-	if type(version) ~= "number" or version > Schema.VERSION then
-		return nil
+	if type(version) ~= "number" or version ~= version then
+		return nil, "corrupt"
+	end
+	if version > Schema.VERSION then
+		return nil, "newer"
 	end
 	-- (future) if version < 2 then ... end
 	data.schema = Schema.VERSION
-	return data
+	return data, nil
 end
 
 -- Coerce any table into a valid Profile. Drops unknown ids, clamps numbers, fills defaults.

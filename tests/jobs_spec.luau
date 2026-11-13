@@ -35,6 +35,27 @@ return function(t)
 			t.truthy(result.cash > 0)
 		end)
 
+		t.test("first run is finishable on foot; later runs scale time and pay with distance", function()
+			local p = Schema.default(0)
+			local job = Courier.new(p, NOW, function()
+				return 1
+			end, Layout.Places.JobBoard)
+			local len = Layout.distance(Layout.Places.JobBoard, Layout.Places.Depot)
+			local at = Layout.Places.Depot
+			for _, stop in job.stops do
+				len += Layout.distance(at, stop.pos)
+				at = stop.pos
+			end
+			-- walking 16 studs/s with a 1.3x road-detour factor must fit in the limit
+			t.truthy(len * 1.3 / 16 <= job.timeLimit, string.format("walk %.0fs > limit %.0fs", len * 1.3 / 16, job.timeLimit))
+			p.firstRunDone.courier = true
+			local far = Courier.new(p, NOW, function(n)
+				return n
+			end, Layout.Places.JobBoard)
+			t.truthy(far.timeLimit <= JobsConfig.Jobs.courier.timeLimit)
+			t.truthy(far.distanceFactor >= 0.6 and far.distanceFactor <= 1.8)
+		end)
+
 		t.test("times out", function()
 			local job = Courier.new(Schema.default(0), NOW, function()
 				return 1
@@ -109,11 +130,11 @@ return function(t)
 			local job = Courier.new(Schema.default(0), NOW, function()
 				return 1
 			end)
-			local floor = job:minimumSeconds(Layout.Places.JobBoard)
+			local floor = job:minimumSeconds(Layout.Places.JobBoard, 110)
 			t.truthy(floor >= JobsConfig.Jobs.courier.minSeconds)
 			t.truthy(floor < JobsConfig.Jobs.courier.timeLimit)
 			local h = Heist.new(Schema.default(0), NOW)
-			local hf = h:minimumSeconds(Layout.Places.JobBoard)
+			local hf = h:minimumSeconds(Layout.Places.JobBoard, 110)
 			t.truthy(hf > JobsConfig.Heist.crackSeconds + 10, "heist floor " .. hf)
 		end)
 	end)

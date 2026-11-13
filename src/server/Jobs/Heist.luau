@@ -94,10 +94,9 @@ function Heist:carryingLoot(): boolean
 end
 
 
--- Fastest legitimate completion: straight-line path through required points at the top car speed.
-function Heist:minimumSeconds(startPos: any): number
+-- Fastest legitimate completion at `cap` studs/s (see Courier:minimumSeconds).
+function Heist:minimumSeconds(startPos: any, cap: number): number
 	local h = JobsConfig.Heist
-	local cap = JobsConfig.MaxPlausibleSpeed
 	local len = math.max(0, Layout.distance(startPos, Layout.Places.MintVault) - h.crackRadius)
 		+ math.max(0, Layout.distance(Layout.Places.MintVault, Layout.Places.Warehouse) - h.dropRadius)
 	return math.max(JobsConfig.Jobs.heist.minSeconds, h.crackSeconds + len / cap)

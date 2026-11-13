@@ -44,7 +44,7 @@ export type BusinessLevel = { name: string, cost: number, repLevel: number, inco
 Progression.Business = {
 	name = "Noodle Stand",
 	levels = {
-		{ name = "Noodle Cart", cost = 500, repLevel = 1, incomePerMin = 12, stashCap = 200, courierBonus = 0.10 },
+		{ name = "Noodle Cart", cost = 400, repLevel = 1, incomePerMin = 12, stashCap = 200, courierBonus = 0.10 },
 		{ name = "Noodle Stand", cost = 4000, repLevel = 3, incomePerMin = 35, stashCap = 700, courierBonus = 0.20 },
 		{ name = "Night Diner", cost = 16000, repLevel = 5, incomePerMin = 80, stashCap = 1800, courierBonus = 0.35 },
 		{ name = "Harbor Kitchen", cost = 50000, repLevel = 7, incomePerMin = 160, stashCap = 4000, courierBonus = 0.50 },

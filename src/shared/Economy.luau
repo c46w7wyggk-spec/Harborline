@@ -49,14 +49,15 @@ end
 ---------------------------------------------------------------------------- raw rewards
 
 -- Courier: fraction of time left in [0,1]. Late = nothing.
-function Economy.courierRaw(profile: Profile, timeLeft: number, timeLimit: number): (number, number)
+-- distanceFactor scales pay with route length (longer routes pay more).
+function Economy.courierRaw(profile: Profile, timeLeft: number, timeLimit: number, distanceFactor: number?): (number, number)
 	if timeLeft <= 0 then
 		return 0, 0
 	end
 	local c = JobsConfig.Courier
 	local biz = Economy.businessLevel(profile)
 	local bonus = if biz then 1 + biz.courierBonus else 1
-	local cash = c.baseCash * (0.4 + 0.6 * clamp01(timeLeft / timeLimit)) * bonus
+	local cash = c.baseCash * (distanceFactor or 1) * (0.4 + 0.6 * clamp01(timeLeft / timeLimit)) * bonus
 	return cash, c.rep
 end
 
@@ -93,6 +94,9 @@ function Economy.finalReward(profile: Profile, jobId: string, rawCash: number, r
 		mult *= JobsConfig.FirstRunMult
 	end
 	local cash = math.clamp(math.floor(rawCash * mult + 0.5), 0, def.maxCash)
+	if jobId == "courier" and not profile.firstRunDone.courier and rawCash > 0 then
+		cash = math.max(cash, JobsConfig.Courier.firstRunMinCash)
+	end
 	local rep = math.max(0, math.floor(rawRep * (if def.usesFreshness then (profile.freshness[jobId] or 1) else 1) + 0.5))
 	return cash, rep
 end

@@ -11,21 +11,61 @@ local Economy = require(Shared.Economy)
 local Courier = {}
 Courier.__index = Courier
 
--- rng(n) returns an integer in [1, n]
-function Courier.new(profile: any, now: number, rng: (number) -> number)
+-- Walking pace used to size the time limit (studs/s after road detours). Real walk speed is 16.
+local WALK_PACE = 11
+local MIN_LIMIT = 90
+
+-- rng(n) returns an integer in [1, n]. startPos is where the player accepted the job.
+function Courier.new(profile: any, now: number, rng: (number) -> number, startPos: Layout.Point?)
 	local def = JobsConfig.Jobs.courier
+	local depot = Layout.Places.Depot
 	local pool = table.clone(Layout.Addresses)
-	local stops = {}
-	for _ = 1, JobsConfig.Courier.stops do
-		local i = rng(#pool)
-		table.insert(stops, pool[i])
-		table.remove(pool, i)
+	local picked = {}
+	if not profile.firstRunDone.courier then
+		-- first run: the three addresses nearest the depot, so it's finishable on foot
+		table.sort(pool, function(a, b)
+			return Layout.distance(a.pos, depot) < Layout.distance(b.pos, depot)
+		end)
+		for i = 1, JobsConfig.Courier.stops do
+			table.insert(picked, pool[i])
+		end
+	else
+		for _ = 1, JobsConfig.Courier.stops do
+			local i = rng(#pool)
+			table.insert(picked, pool[i])
+			table.remove(pool, i)
+		end
 	end
+	-- order stops nearest-next from the depot so the route makes sense
+	local stops = {}
+	local at = depot
+	while #picked > 0 do
+		local best, bestD = 1, math.huge
+		for i, a in picked do
+			local d = Layout.distance(at, a.pos)
+			if d < bestD then
+				best, bestD = i, d
+			end
+		end
+		local a = table.remove(picked, best)
+		table.insert(stops, a)
+		at = a.pos
+	end
+	local routeLen = 0
+	at = depot
+	for _, a in stops do
+		routeLen += Layout.distance(at, a.pos)
+		at = a.pos
+	end
+	local approach = Layout.distance(startPos or Layout.Places.JobBoard, depot)
+	local timeLimit = math.clamp((approach + routeLen) / WALK_PACE + 30, MIN_LIMIT, def.timeLimit)
 	return setmetatable({
 		id = "courier",
 		profile = profile,
 		startedAt = now,
-		deadline = now + def.timeLimit,
+		timeLimit = timeLimit,
+		deadline = now + timeLimit,
+		distanceFactor = math.clamp(routeLen / 1600, 0.6, 1.8),
 		state = "pickup",
 		stops = stops,
 		stopIndex = 0,
@@ -47,7 +87,6 @@ end
 
 -- ctx = { now, pos = {x,z}?, alive, inVehicle }. Returns nil while running, or a result table.
 function Courier:update(ctx: any)
-	local def = JobsConfig.Jobs.courier
 	if ctx.now >= self.deadline then
 		return { success = false, reason = "Out of time! The parcels were late.", cash = 0, rep = 0 }
 	end
@@ -66,7 +105,7 @@ function Courier:update(ctx: any)
 	if Layout.distance(ctx.pos, stop.pos) <= JobsConfig.Courier.stopRadius then
 		if self.stopIndex >= #self.stops then
 			local timeLeft = self.deadline - ctx.now
-			local cash, rep = Economy.courierRaw(self.profile, timeLeft, def.timeLimit)
+			local cash, rep = Economy.courierRaw(self.profile, timeLeft, self.timeLimit, self.distanceFactor)
 			return { success = true, cash = cash, rep = rep, reason = "All parcels delivered!" }
 		end
 		self.stopIndex += 1
@@ -76,9 +115,9 @@ function Courier:update(ctx: any)
 end
 
 
--- Fastest legitimate completion: straight-line path through required points at the top car speed.
-function Courier:minimumSeconds(startPos: any): number
-	local cap = JobsConfig.MaxPlausibleSpeed
+-- Fastest legitimate completion: straight-line path through the required points at `cap` studs/s
+-- (JobService passes the fastest vehicle the player drove this run, +15%).
+function Courier:minimumSeconds(startPos: any, cap: number): number
 	local pts = { Layout.Places.Depot }
 	for _, s in self.stops do
 		table.insert(pts, s.pos)
