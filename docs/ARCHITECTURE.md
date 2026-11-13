@@ -69,7 +69,7 @@ polling the player's HumanoidRootPart (or vehicle) position at 10 Hz against `Wo
    `LinearVelocity` (XZ plane) + `AngularVelocity` (yaw). Default Roblox controls already map
    keyboard, gamepad and touch thumbstick into `VehicleSeat.ThrottleFloat/SteerFloat`, which gives
    all three input types with one code path. Server enforces max speed per vehicle for job timing floors.
-3. **Session-locked DataStore** via `UpdateAsync` with a lock `{jobId, time}`; stale lock after 120 s.
+3. **Session-locked DataStore** via `UpdateAsync` with a lock `{jobId, time}`; stale lock after 90 s (autosave refreshes it every 60 s); the lock also carries a per-session token.
    Studio uses a separate store name (`_STUDIO` suffix); if DataStores are unavailable, Studio runs
    in memory with saving disabled; live servers kick after retries instead of loading defaults.
 4. **Rewards** computed only on the server by `shared/Economy` from config + server-measured time,

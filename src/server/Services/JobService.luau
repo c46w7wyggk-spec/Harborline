@@ -12,9 +12,9 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local JobsConfig = require(ReplicatedStorage.Shared.Config.Jobs)
-local Layout = require(ReplicatedStorage.Shared.Config.WorldLayout)
 local Economy = require(ReplicatedStorage.Shared.Economy)
 local Validate = require(ReplicatedStorage.Shared.Validate)
+local MovementGuard = require(ReplicatedStorage.Shared.MovementGuard)
 local DataService = require(script.Parent.DataService)
 local StateService = require(script.Parent.StateService)
 local VehicleService = require(script.Parent.VehicleService)
@@ -35,10 +35,13 @@ type Run = {
 	jobId: string,
 	startedAt: number,
 	startPos: { x: number, z: number },
-	lastPos: { x: number, z: number }?,
-	lastT: number,
+	guard: any, -- MovementGuard
+	maxCap: number, -- fastest legitimate travel speed seen during this run
+	suspects: number,
 	lootBag: BasePart?,
 }
+
+local SUSPECTS_TO_VOID = 3
 
 local JobService = {}
 local active: { [Player]: Run } = {}
@@ -118,7 +121,8 @@ local function finish(player: Player, result: any)
 
 	if result.success then
 		local elapsed = if run.jobId == "race" then run.job:timedSeconds(nowClock) else nowClock - run.startedAt
-		local floor = run.job:minimumSeconds(run.startPos)
+		-- physical floor using the fastest vehicle the player actually drove this run (+5%: the car physically cannot exceed its max on flat ground)
+		local floor = run.job:minimumSeconds(run.startPos, run.maxCap * 1.05)
 		if elapsed < floor then
 			JobService.flag(player, string.format("%s finished in %.1fs (floor %.1fs)", run.jobId, elapsed, floor))
 			result = { success = false, cash = 0, rep = 0, reason = "That run didn't add up, so it was not paid." }
@@ -146,6 +150,26 @@ local function finish(player: Player, result: any)
 		TutorialService.event(player, if result.success then "deliver" else "courierFailed")
 	elseif run.jobId == "race" and result.success then
 		TutorialService.event(player, "drive")
+	end
+end
+
+-- Soft signal (lag, a collision fling, a borderline speed). Never kicks; enough of them in one
+-- run voids that run's payout.
+function JobService.suspect(player: Player, why: string)
+	local run = active[player]
+	if not run then
+		return
+	end
+	run.suspects += 1
+	warn(string.format("[Anticheat] user=%d suspect %d: %s", player.UserId, run.suspects, why))
+	if run.suspects >= SUSPECTS_TO_VOID then
+		finish(player, { success = false, abandoned = true, cash = 0, rep = 0, reason = "Job cancelled: movement didn't add up. No payout." })
+	end
+end
+
+function JobService.abandonAll(reason: string)
+	for player in active do
+		JobService.abandon(player, reason)
 	end
 end
 
@@ -182,7 +206,15 @@ local function startJob(player: Player, jobId: string): (boolean, string?)
 		job = JobModules[jobId].new(p, now)
 	end
 	local pos = flatPos(root)
-	active[player] = { job = job, jobId = jobId, startedAt = now, startPos = pos, lastPos = pos, lastT = now }
+	active[player] = {
+		job = job,
+		jobId = jobId,
+		startedAt = now,
+		startPos = pos,
+		guard = MovementGuard.new(2),
+		maxCap = VehicleService.speedCap(player),
+		suspects = 0,
+	}
 	sendObjective(player, active[player])
 	if jobId == "courier" then
 		TutorialService.event(player, "start")
@@ -197,20 +229,22 @@ local function tick()
 		local alive = hum ~= nil and hum.Health > 0
 		local pos = if root then flatPos(root) else nil
 
-		-- teleport / speed sanity between samples
-		if pos and run.lastPos then
-			local dt = now - run.lastT
-			if dt > 0.05 then
-				local speed = Layout.distance(pos, run.lastPos) / dt
-				if speed > JobsConfig.MaxPlausibleSpeed * 1.3 and Layout.distance(pos, run.lastPos) > 25 then
-					JobService.flag(player, string.format("moved %.0f studs/s during %s", speed, run.jobId))
-					finish(player, { success = false, abandoned = true, cash = 0, rep = 0, reason = "Job cancelled: movement check failed." })
+		-- movement plausibility over a 2 s window (tolerant of lag spikes, strict on teleports)
+		if pos and alive then
+			local cap = VehicleService.speedCap(player)
+			run.maxCap = math.max(run.maxCap, cap)
+			local verdict = run.guard:sample(now, pos.x, pos.z, cap)
+			if verdict == "teleport" then
+				JobService.flag(player, "teleport during " .. run.jobId)
+				finish(player, { success = false, abandoned = true, cash = 0, rep = 0, reason = "Job cancelled: movement check failed." })
+				continue
+			elseif verdict == "suspect" then
+				JobService.suspect(player, "fast movement during " .. run.jobId)
+				if not active[player] then
 					continue
 				end
 			end
 		end
-		run.lastPos = pos
-		run.lastT = now
 
 		local ctx = { now = now, pos = pos, alive = alive, inVehicle = VehicleService.isDriving(player) }
 		local result, message = run.job:update(ctx)
@@ -244,7 +278,8 @@ function JobService.start()
 		return true, nil
 	end)
 
-	VehicleService.onFlag(JobService.flag)
+	-- the car watchdog only raises suspicion (a fling by another player must not get you kicked)
+	VehicleService.onFlag(JobService.suspect)
 
 	local function hookCharacter(player: Player, char: Model)
 		local hum = char:WaitForChild("Humanoid", 10) :: Humanoid?

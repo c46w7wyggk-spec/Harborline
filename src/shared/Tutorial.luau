@@ -6,8 +6,8 @@ local Tutorial = {}
 Tutorial.STEPS = {
 	{ id = "board", text = "Welcome to Harborline! Walk to the glowing JOB BOARD in the plaza.", target = "JobBoard" },
 	{ id = "start", text = "Open the Job Board (or the Phone button) and start a Courier Run.", target = "JobBoard" },
-	{ id = "deliver", text = "Follow the light beam: grab parcels at the Depot, then deliver all 3.", target = nil },
-	{ id = "buy", text = "Nice pay! Spend $500 on the Noodle Cart - it earns cash while you play.", target = "NoodleStand" },
+	{ id = "deliver", text = "Follow the light beam: Depot first, then 3 drop-offs. Tip: Phone > Garage spawns your free Pebble car.", target = nil },
+	{ id = "buy", text = "Nice pay! Buy the $400 Noodle Cart at the Noodle Stand - it earns cash while you play.", target = "NoodleStand" },
 	{ id = "drive", text = "Spawn a car (Phone > Garage) and race the Harbor Sprint.", target = "RaceStart" },
 }
 Tutorial.COUNT = #Tutorial.STEPS

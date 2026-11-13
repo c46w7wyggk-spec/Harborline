@@ -211,7 +211,10 @@ local function build(player: Player, def: Progression.VehicleDef, cf: CFrame): M
 		end
 	end)
 
+	model.ModelStreamingMode = Enum.ModelStreamingMode.Atomic -- stream the whole car at once
 	model.Parent = carsFolder
+	-- server owns an empty car, so a nearby player can't take its physics and fling it
+	pcall(chassis.SetNetworkOwner, chassis, nil)
 	return model
 end
 
@@ -222,6 +225,17 @@ function VehicleService.despawn(player: Player)
 		cars[player] = nil
 	end
 	overSpeedSamples[player] = nil
+end
+
+local ON_FOOT_CAP = 40 -- walk 16, plus jumps/falls/ragdoll slides
+
+-- Fastest legitimate speed for the player's current mode of travel (used by movement checks).
+function VehicleService.speedCap(player: Player): number
+	local car = cars[player]
+	if car and VehicleService.isDriving(player) and car.PrimaryPart then
+		return math.max(ON_FOOT_CAP, (car.PrimaryPart:GetAttribute("MaxSpeed") :: number?) or ON_FOOT_CAP)
+	end
+	return ON_FOOT_CAP
 end
 
 -- Is the player currently driving their own car?

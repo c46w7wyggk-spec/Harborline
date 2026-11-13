@@ -22,6 +22,11 @@ VehicleService.start()
 JobService.start()
 ShopService.start()
 
+-- On shutdown, void running jobs first so their cooldowns are part of the final save.
+DataService.onShutdown(function()
+	JobService.abandonAll("server shutting down")
+end)
+
 DataService.onLoaded(function(player, session)
 	ShopService.markActive(player)
 	StateService.push(player)

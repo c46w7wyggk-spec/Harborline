@@ -1,5 +1,5 @@
 --!strict
--- Shared look and small UI construction helpers. Touch targets are at least 48 px tall.
+-- Shared look and small UI construction helpers. Touch targets are at least 44 pt on screen.
 
 local GuiService = game:GetService("GuiService")
 local UserInputService = game:GetService("UserInputService")
@@ -21,7 +21,7 @@ Theme.colors = {
 }
 Theme.font = Enum.Font.FredokaOne
 Theme.bodyFont = Enum.Font.GothamMedium
-Theme.MIN_TOUCH = 48
+Theme.MIN_TOUCH = 56 -- logical px; HUD scale floor 0.8 keeps it >= 44 pt on phones
 
 function Theme.isTouch(): boolean
 	return UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled

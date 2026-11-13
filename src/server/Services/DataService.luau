@@ -23,19 +23,21 @@ local Schema = require(ReplicatedStorage.Shared.Schema)
 local IS_STUDIO = RunService:IsStudio()
 local STORE_NAME = "HarborlinePlayers_v1" .. (if IS_STUDIO then "_STUDIO" else "")
 local SERVER_ID = HttpService:GenerateGUID(false)
-local LOCK_STALE_SECONDS = 150 -- autosave refreshes the lock every AUTOSAVE_SECONDS
+local LOCK_STALE_SECONDS = 90 -- autosave refreshes the lock every AUTOSAVE_SECONDS
 local AUTOSAVE_SECONDS = 60
 local URGENT_SAVE_MIN_GAP = 8 -- stay under the per-key write limit
-local LOAD_ATTEMPTS = 6
+local LOAD_ATTEMPTS = 8 -- with backoff this waits ~100 s, longer than a stale lock lasts
 
 export type Session = {
 	player: Player,
 	key: string,
+	token: string, -- this session's lock token (a server can host the same player twice)
 	data: Schema.Profile,
 	canSave: boolean, -- false in Studio memory mode or after losing the lock
 	lastSave: number,
 	dirty: boolean,
 	saving: boolean,
+	releasing: boolean,
 	released: boolean,
 }
 
@@ -73,6 +75,13 @@ local function getStore(): DataStore?
 	return nil
 end
 
+local shutdownCallbacks: { () -> () } = {}
+
+-- Runs at the start of BindToClose, before the final saves (e.g. to void active jobs).
+function DataService.onShutdown(cb: () -> ())
+	table.insert(shutdownCallbacks, cb)
+end
+
 function DataService.onLoaded(cb: (Player, Session) -> ())
 	table.insert(loadedCallbacks, cb)
 end
@@ -103,7 +112,7 @@ local function releaseLockOnly(key: string)
 	end)
 end
 
-local function finishLoad(player: Player, data: Schema.Profile, canSave: boolean)
+local function finishLoad(player: Player, data: Schema.Profile, canSave: boolean, token: string)
 	if player.Parent ~= Players then
 		-- Player left while we were loading: give the lock back so their next server loads quickly.
 		if canSave then
@@ -114,11 +123,13 @@ local function finishLoad(player: Player, data: Schema.Profile, canSave: boolean
 	local session: Session = {
 		player = player,
 		key = "p_" .. player.UserId,
+		token = token,
 		data = data,
 		canSave = canSave,
 		lastSave = os.clock(),
 		dirty = false,
 		saving = false,
+		releasing = false,
 		released = false,
 	}
 	sessions[player] = session
@@ -142,7 +153,7 @@ local function load(player: Player)
 	if DataService.memoryMode or not ds then
 		if IS_STUDIO then
 			DataService.memoryMode = true
-			finishLoad(player, Schema.default(now), false)
+			finishLoad(player, Schema.default(now), false, "memory")
 		else
 			player:Kick("Harborline couldn't reach its save service. Nothing was lost - please rejoin in a minute.")
 		end
@@ -150,6 +161,7 @@ local function load(player: Player)
 	end
 
 	local key = "p_" .. player.UserId
+	local token = HttpService:GenerateGUID(false)
 	for attempt = 1, LOAD_ATTEMPTS do
 		if player.Parent ~= Players then
 			return
@@ -167,7 +179,7 @@ local function load(player: Player)
 					end
 				end
 				local record = if type(old) == "table" then old else {}
-				record.lock = { server = SERVER_ID, t = t }
+				record.lock = { server = SERVER_ID, session = token, t = t }
 				return record
 			end)
 		end)
@@ -176,10 +188,19 @@ local function load(player: Player)
 			local record = result
 			local raw = if type(record) == "table" then record.data else nil
 			if raw == nil then
-				finishLoad(player, Schema.default(now), true)
+				finishLoad(player, Schema.default(now), true, token)
 				return
 			end
-			local migrated = Schema.migrate(raw)
+			local migrated, why = Schema.migrate(raw)
+			if migrated == nil and why == "corrupt" then
+				-- Unreadable record: keep a copy for investigation, then start fresh rather than lock the player out.
+				log("corrupt-save", player.UserId, typeof(raw))
+				pcall(function()
+					(ds :: DataStore):SetAsync(key .. "_corrupt_" .. os.time(), { data = raw })
+				end)
+				finishLoad(player, Schema.default(now), true, token)
+				return
+			end
 			if migrated == nil then
 				-- Written by a newer build: don't touch it. Release our lock without changing data.
 				log("newer-schema", player.UserId, raw and raw.schema)
@@ -187,14 +208,14 @@ local function load(player: Player)
 				player:Kick("This server is running an older version of Harborline. Please rejoin.")
 				return
 			end
-			finishLoad(player, Schema.sanitize(migrated, now), true)
+			finishLoad(player, Schema.sanitize(migrated, now), true, token)
 			return
 		end
 
 		if not ok and IS_STUDIO and isStudioAccessError(result) then
 			warn("[Data] Studio API access is off: running in memory, progress will NOT be saved.")
 			DataService.memoryMode = true
-			finishLoad(player, Schema.default(now), false)
+			finishLoad(player, Schema.default(now), false, "memory")
 			return
 		end
 
@@ -225,6 +246,10 @@ local function save(session: Session, release: boolean): boolean
 	while session.saving do
 		task.wait(0.1)
 	end
+	-- re-check: the save we waited for may have been the leave-save
+	if session.released or not session.canSave or (not release and session.releasing) then
+		return true
+	end
 	session.saving = true
 	local userId = session.player.UserId
 	local lostLock = false
@@ -234,14 +259,15 @@ local function save(session: Session, release: boolean): boolean
 		local ok, err = pcall(function()
 			(ds :: DataStore):UpdateAsync(session.key, function(old: any)
 				lostLock = false
-				if type(old) == "table" and type(old.lock) == "table" and old.lock.server ~= SERVER_ID then
+				local lock = if type(old) == "table" then old.lock else nil
+				if type(lock) == "table" and (lock.server ~= SERVER_ID or (lock.session ~= nil and lock.session ~= session.token)) then
 					lostLock = true
 					return nil -- someone else owns this profile now; never overwrite their data
 				end
 				local t = os.time()
 				return {
 					data = session.data,
-					lock = if release then nil else { server = SERVER_ID, t = t },
+					lock = if release then nil else { server = SERVER_ID, session = session.token, t = t },
 					savedAt = t,
 				}
 			end)
@@ -282,11 +308,11 @@ function DataService.markDirty(player: Player, urgent: boolean?)
 		return
 	end
 	s.dirty = true
-	if urgent and s.canSave and not s.saving then
+	if urgent and s.canSave then
 		local wait = math.max(0, URGENT_SAVE_MIN_GAP - (os.clock() - s.lastSave))
 		task.delay(wait, function()
-			if sessions[player] == s and s.dirty and not s.saving then
-				save(s, false)
+			if sessions[player] == s and s.dirty then
+				save(s, false) -- waits for any save in progress
 			end
 		end)
 	end
@@ -299,6 +325,7 @@ function DataService.release(player: Player)
 		return
 	end
 	releasing[player.UserId] = true
+	s.releasing = true
 	sessions[player] = nil -- no further autosaves/urgent saves for this session
 	save(s, true)
 	releasing[player.UserId] = nil
@@ -323,6 +350,9 @@ function DataService.start()
 	end)
 
 	game:BindToClose(function()
+		for _, cb in shutdownCallbacks do
+			pcall(cb)
+		end
 		-- Roblox gives ~30 s; save everyone in parallel.
 		local pending = 0
 		for _, s in sessions do

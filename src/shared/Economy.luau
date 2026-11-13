@@ -94,6 +94,9 @@ function Economy.finalReward(profile: Profile, jobId: string, rawCash: number, r
 		mult *= JobsConfig.FirstRunMult
 	end
 	local cash = math.clamp(math.floor(rawCash * mult + 0.5), 0, def.maxCash)
+	if jobId == "courier" and not profile.firstRunDone.courier and rawCash > 0 then
+		cash = math.max(cash, JobsConfig.Courier.firstRunMinCash)
+	end
 	local rep = math.max(0, math.floor(rawRep * (if def.usesFreshness then (profile.freshness[jobId] or 1) else 1) + 0.5))
 	return cash, rep
 end

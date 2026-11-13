@@ -115,9 +115,9 @@ function Courier:update(ctx: any)
 end
 
 
--- Fastest legitimate completion: straight-line path through required points at the top car speed.
-function Courier:minimumSeconds(startPos: any): number
-	local cap = JobsConfig.MaxPlausibleSpeed
+-- Fastest legitimate completion: straight-line path through the required points at `cap` studs/s
+-- (JobService passes the fastest vehicle the player drove this run, +15%).
+function Courier:minimumSeconds(startPos: any, cap: number): number
 	local pts = { Layout.Places.Depot }
 	for _, s in self.stops do
 		table.insert(pts, s.pos)

@@ -1,6 +1,7 @@
 return function(t)
 	local Validate = t.Loader.require("src/shared/Validate")
 	local RateLimiter = t.Loader.require("src/shared/RateLimiter")
+	local MovementGuard = t.Loader.require("src/shared/MovementGuard")
 
 	t.suite("Validate", function()
 		t.test("ids", function()
@@ -50,6 +51,48 @@ return function(t)
 			local rl = RateLimiter.new(1, 1)
 			t.truthy(rl:allow("p", 100))
 			t.truthy(not rl:allow("p", 50))
+		end)
+	end)
+	t.suite("MovementGuard", function()
+		t.test("steady driving at max speed is ok", function()
+			local g = MovementGuard.new(2)
+			for i = 0, 100 do
+				t.eq(g:sample(i * 0.1, i * 0.1 * 95, 0, 95), "ok")
+			end
+		end)
+		t.test("lag spike (frozen 0.6 s then catch-up) is ok", function()
+			local g = MovementGuard.new(2)
+			local x = 0
+			for i = 0, 30 do
+				local tm = i * 0.1
+				if i < 10 or i >= 16 then
+					x = tm * 95 -- frozen between 1.0 and 1.5 s, then jumps to where it should be
+				end
+				t.eq(g:sample(tm, x, 0, 95), "ok", "tick " .. i)
+			end
+		end)
+		t.test("small repeated steps faster than the car are caught", function()
+			local g = MovementGuard.new(2)
+			local verdicts = {}
+			for i = 0, 40 do
+				verdicts[g:sample(i * 0.1, i * 24, 0, 50)] = true -- 240 studs/s in a 50 studs/s car
+			end
+			t.truthy(verdicts.suspect or verdicts.teleport)
+		end)
+		t.test("teleport across the map is a teleport", function()
+			local g = MovementGuard.new(2)
+			for i = 0, 9 do
+				g:sample(i * 0.1, 0, 0, 40)
+			end
+			t.eq(g:sample(1.0, 900, 900, 40), "teleport")
+		end)
+		t.test("on foot after leaving a fast car is ok", function()
+			local g = MovementGuard.new(2)
+			for i = 0, 10 do
+				g:sample(i * 0.1, i * 9.5, 0, 95)
+			end
+			-- car stops dead when you exit; cap drops to on-foot but window remembers the car
+			t.eq(g:sample(1.2, 100, 0, 40), "ok")
 		end)
 	end)
 end

@@ -102,8 +102,14 @@ function Race:timedSeconds(now: number): number
 	return if self.raceStart then now - self.raceStart else 0
 end
 
-function Race:minimumSeconds(_startPos: any): number
-	return JobsConfig.Jobs.race.minSeconds
+-- Timed part only: straight-line lap through every checkpoint at `cap` studs/s.
+function Race:minimumSeconds(_startPos: any, cap: number): number
+	local cps = Layout.RaceCheckpoints
+	local len = math.max(0, Layout.distance(Layout.Places.RaceStart, cps[1]) - Layout.CheckpointRadius)
+	for i = 2, #cps do
+		len += math.max(0, Layout.distance(cps[i - 1], cps[i]) - 2 * Layout.CheckpointRadius)
+	end
+	return math.max(JobsConfig.Jobs.race.minSeconds, len / cap)
 end
 
 return Race

@@ -54,6 +54,7 @@ roblox.implementMethod("GuiService", "IsTenFootInterface", function()
 	return false
 end)
 roblox.implementMethod("ContextActionService", "BindAction", function() end)
+roblox.implementMethod("BasePart", "SetNetworkOwner", function() end) -- physics-only API
 
 -- Minimal Random (deterministic LCG) since lune has no Random global.
 local Random = {}

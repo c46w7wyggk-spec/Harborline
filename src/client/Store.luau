@@ -7,6 +7,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Store = {}
 Store.state = nil :: any -- latest State snapshot
 Store.job = nil :: any -- latest Job objective message (nil when free roaming)
+Store.stateAt = 0 -- os.clock() when `state` arrived (cooldowns are "seconds remaining" at that moment)
 
 local listeners: { [string]: { (any) -> () } } = {}
 
@@ -39,6 +40,14 @@ function Store.request(action: string, arg: string?): (boolean, string?)
 	return success, message
 end
 
+function Store.cooldownLeft(jobId: string): number
+	local s = Store.state
+	if not s then
+		return 0
+	end
+	return math.max(0, (s.cooldowns[jobId] or 0) - (os.clock() - Store.stateAt))
+end
+
 function Store.start()
 	local stateEvent = remotes:WaitForChild("State") :: RemoteEvent
 	local jobEvent = remotes:WaitForChild("Job") :: RemoteEvent
@@ -46,6 +55,7 @@ function Store.start()
 	local menuEvent = remotes:WaitForChild("OpenMenu") :: RemoteEvent
 	stateEvent.OnClientEvent:Connect(function(snap)
 		Store.state = snap
+		Store.stateAt = os.clock()
 		Store.emit("state", snap)
 	end)
 	jobEvent.OnClientEvent:Connect(function(msg)

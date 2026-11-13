@@ -59,8 +59,8 @@ local function build()
 	local scale = new("UIScale", { Parent = gui })
 	local function rescale()
 		local vp = Workspace.CurrentCamera.ViewportSize
-		-- never shrink below 1 on touch so buttons stay >= 48 px
-		local s = math.clamp(vp.Y / 720, if Theme.isTouch() then 1 else 0.8, 1.3)
+		-- small phones get 0.8 (56 px buttons become ~45 pt, still above the 44 pt touch guideline)
+		local s = math.clamp(vp.Y / 720, 0.8, 1.3)
 		scale.Scale = s
 	end
 	Workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(rescale)
@@ -87,8 +87,8 @@ local function build()
 		Store.request("CancelJob")
 	end)
 
-	-- goal / tutorial card (bottom-left; above the touch thumbstick area on phones)
-	local goal = panel({ Parent = gui, Name = "Goal", AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 12, 1, if Theme.isTouch() then -190 else -16), Size = UDim2.fromOffset(300, 84) })
+	-- goal / tutorial card sits under the stats panel: clear of the thumbstick, jump button and objective
+	local goal = panel({ Parent = gui, Name = "Goal", Position = UDim2.fromOffset(12, 90), Size = UDim2.fromOffset(300, 84) })
 	Theme.padding(8).Parent = goal
 	refs.goalTitle = Theme.label({ Parent = goal, Text = "NEXT GOAL", TextSize = 13, TextColor3 = colors.rep, TextXAlignment = Enum.TextXAlignment.Left, Size = UDim2.new(1, 0, 0, 14) })
 	refs.goalText = Theme.label({ Parent = goal, Text = "Loading your save...", Font = Theme.bodyFont, TextSize = 16, TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top, Position = UDim2.fromOffset(0, 16), Size = UDim2.new(1, 0, 0, 40) })
@@ -192,9 +192,13 @@ local function renderJob(msg: any)
 	end
 end
 
+local toastCounter = 0
+local resultToken = 0
+
 local function toast(n: any)
 	local color = if n.kind == "success" then colors.good elseif n.kind == "warn" then colors.warn elseif n.kind == "job" then colors.accent else colors.text
-	local t = panel({ Parent = refs.toasts, Size = UDim2.fromOffset(440, 38), BackgroundTransparency = 0.2 })
+	toastCounter += 1
+	local t = panel({ Parent = refs.toasts, Size = UDim2.fromOffset(440, 38), BackgroundTransparency = 0.2, LayoutOrder = toastCounter })
 	Theme.label({ Parent = t, Text = n.text, Font = Theme.bodyFont, TextSize = 16, TextColor3 = color, Size = UDim2.fromScale(1, 1) })
 	local items = refs.toasts:GetChildren()
 	local frames = {}
@@ -204,7 +208,10 @@ local function toast(n: any)
 		end
 	end
 	if #frames > 3 then
-		frames[1]:Destroy()
+		table.sort(frames, function(a, b)
+			return a.LayoutOrder < b.LayoutOrder
+		end)
+		frames[1]:Destroy() -- oldest
 	end
 	task.delay(4, function()
 		if t.Parent then
@@ -227,8 +234,12 @@ local function showResult(r: any)
 		refs.resReward.Text = if r.rep > 0 then string.format("+%d Rep", r.rep) else "No payout"
 	end
 	refs.resReason.Text = r.reason or ""
+	resultToken += 1
+	local mine = resultToken
 	task.delay(8, function()
-		refs.result.Visible = false
+		if resultToken == mine then
+			refs.result.Visible = false
+		end
 	end)
 end
 

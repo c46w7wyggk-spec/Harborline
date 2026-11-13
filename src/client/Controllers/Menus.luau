@@ -30,11 +30,12 @@ local function clearList()
 end
 
 local function card(title: string, lines: string, buttonText: string?, enabled: boolean, onClick: (() -> ())?, accent: Color3?): Frame
-	local f = new("Frame", { Parent = list, BackgroundColor3 = colors.panelLight, BorderSizePixel = 0, Size = UDim2.new(1, -8, 0, 104) })
+	-- grows with its text so long blurbs never spill into the next card
+	local f = new("Frame", { Parent = list, BackgroundColor3 = colors.panelLight, BorderSizePixel = 0, Size = UDim2.new(1, -8, 0, 104), AutomaticSize = Enum.AutomaticSize.Y })
 	Theme.corner(12).Parent = f
 	Theme.padding(10).Parent = f
 	Theme.label({ Parent = f, Text = title, TextSize = 20, TextColor3 = accent or colors.text, TextXAlignment = Enum.TextXAlignment.Left, Size = UDim2.new(1, -130, 0, 22) })
-	Theme.label({ Parent = f, Text = lines, Font = Theme.bodyFont, TextSize = 14, TextColor3 = colors.muted, TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top, Position = UDim2.fromOffset(0, 24), Size = UDim2.new(1, -130, 1, -24) })
+	Theme.label({ Parent = f, Text = lines, Font = Theme.bodyFont, TextSize = 14, TextColor3 = colors.muted, TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top, Position = UDim2.fromOffset(0, 24), Size = UDim2.new(1, -130, 0, 50), AutomaticSize = Enum.AutomaticSize.Y })
 	if buttonText then
 		local b = Theme.button({
 			Parent = f,
@@ -69,7 +70,7 @@ local renderTab: () -> ()
 local function renderJobs(s: any)
 	for _, id in JobsConfig.Order do
 		local def = JobsConfig.Jobs[id]
-		local cd = s.cooldowns[id] or 0
+		local cd = Store.cooldownLeft(id)
 		local fresh = s.freshness[id] or 1
 		local status
 		local enabled = true
@@ -188,6 +189,7 @@ function renderTab()
 	if not root or not root.Visible then
 		return
 	end
+	local hadSelection = GuiService.SelectedObject ~= nil and GuiService.SelectedObject:IsDescendantOf(root)
 	clearList()
 	for id, b in tabButtons do
 		b.BackgroundColor3 = if id == currentTab then colors.accent else colors.panelLight
@@ -206,6 +208,10 @@ function renderTab()
 		renderDealer(s)
 	else
 		renderBusiness(s)
+	end
+	if hadSelection then
+		-- the selected card was rebuilt; keep gamepad focus inside the menu
+		GuiService.SelectedObject = tabButtons[currentTab]
 	end
 end
 
@@ -290,6 +296,20 @@ end
 
 function Menus.start()
 	build()
+	-- live cooldown countdown while the Jobs tab is open
+	task.spawn(function()
+		while true do
+			task.wait(1)
+			if root.Visible and currentTab == "jobs" and Store.state then
+				for _, id in JobsConfig.Order do
+					if (Store.state.cooldowns[id] or 0) > 0 and Store.cooldownLeft(id) >= 0 then
+						renderTab()
+						break
+					end
+				end
+			end
+		end
+	end)
 	Store.on("openMenu", function(id)
 		Menus.open(id)
 	end)

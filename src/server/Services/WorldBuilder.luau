@@ -56,6 +56,15 @@ local function folder(name: string, parent: Instance?): Folder
 	return f
 end
 
+-- Huge ground/road parts: keep them always streamed in so the floor never vanishes at map corners.
+local function persistentModel(name: string): Model
+	local m = Instance.new("Model")
+	m.Name = name
+	m.ModelStreamingMode = Enum.ModelStreamingMode.Persistent
+	m.Parent = root
+	return m
+end
+
 local function at(pt: Layout.Point, y: number): Vector3
 	return Vector3.new(pt.x, y, pt.z)
 end
@@ -122,7 +131,7 @@ end
 ---------------------------------------------------------------------------- ground, water, roads
 
 local function buildGround()
-	local f = folder("Ground")
+	local f = persistentModel("Ground")
 	local half = Layout.MAP_HALF + 40
 	local depth = (Layout.WATER_Z + 20) - (-half)
 	local ground = part(f, {
@@ -159,7 +168,7 @@ local function buildGround()
 end
 
 local function buildRoads()
-	local f = folder("Roads")
+	local f = persistentModel("Roads")
 	local w = Layout.ROAD_WIDTH
 	local half = Layout.MAP_HALF
 	local north, south = -half - w / 2, Layout.HARBOR_BLVD_Z + w / 2
@@ -369,7 +378,10 @@ local function buildJobSites()
 
 	-- Delivery addresses: a mailbox and a name label at each
 	for _, a in Layout.Addresses do
-		local box = part(f, { Name = "Mailbox_" .. a.id, Size = Vector3.new(2, 4, 2), Position = Vector3.new(a.pos.x + 26, 2, a.pos.z + 26), Color = Color3.fromRGB(60, 110, 220) })
+		-- within the delivery radius, non-colliding so cars don't snag on it
+		local box = part(f, { Name = "Mailbox_" .. a.id, Size = Vector3.new(2, 4, 2), Position = Vector3.new(a.pos.x + 8, 2, a.pos.z + 8), Color = Color3.fromRGB(60, 110, 220), CanCollide = false })
+		local marker = part(f, { Name = "DropMarker_" .. a.id, Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.3, 30, 30), CFrame = CFrame.new(a.pos.x, 0.35, a.pos.z) * CFrame.Angles(0, 0, math.rad(90)), Color = Color3.fromRGB(60, 110, 220), Material = Enum.Material.Neon, Transparency = 0.7, CanCollide = false })
+		local _ = marker
 		billboard(box, a.name, Color3.new(1, 1, 1), 120)
 	end
 

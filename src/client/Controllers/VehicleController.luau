@@ -50,8 +50,14 @@ local function step(dt: number)
 	local steer = seat.SteerFloat
 
 	if throttle > 0.05 then
-		local rate = if speed < 0 then accel * BRAKE_MULT else accel
-		speed = math.min(speed + rate * throttle * dt, maxSpeed * throttle)
+		-- partial throttle eases toward a lower cruise speed instead of snapping down to it
+		local target = maxSpeed * throttle
+		if speed < target then
+			local rate = if speed < 0 then accel * BRAKE_MULT else accel
+			speed = math.min(speed + rate * throttle * dt, target)
+		else
+			speed = math.max(target, speed - COAST_DECEL * dt)
+		end
 	elseif throttle < -0.05 then
 		local rate = if speed > 0 then accel * BRAKE_MULT else accel * 0.7
 		speed = math.max(speed + rate * throttle * dt, -maxSpeed * REVERSE_FRACTION)

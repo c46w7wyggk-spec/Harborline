@@ -34,3 +34,28 @@ Newest entries at the bottom. "Automated" = ran in the cloud container. "Manual"
 - Geometry check: all 28 gameplay points (places, addresses, checkpoints) are clear of solid buildings.
 - Part count 731 (target < 3000 for mobile).
 - `scripts/check.sh` = format + compile + unit + smoke + rojo build. **All pass.**
+
+## 2026-11-13 — Phase 4: independent review and fixes
+Reviewer agent (report only) found 1 BLOCKER, 9 MAJOR, ~12 MINOR (`docs/QA_REVIEW.md`). Lead verified each against the
+code and fixed:
+- **C1 blocker / A1 / A2 / A4 (anti-cheat):** the per-tick teleport check would cancel jobs and kick laggy phone
+  players, while letting 24-stud micro-steps through. Replaced with `shared/MovementGuard` (2 s window, budget from
+  the vehicle actually driven, on foot 40 studs/s). Lag spikes pass; teleports void the job and flag; borderline
+  speed only raises "suspect" (3 per run voids the payout, never kicks). Car overspeed watchdog now only raises
+  suspicion, so being flung by another player can't get you kicked. Job time floors use the fastest car driven
+  that run (+5%) instead of a global 110 studs/s. 5 new unit tests.
+- **B1/B2 (save races):** saves re-check `released`/`releasing` after waiting; release removes the session before
+  yielding; same-server rejoin waits for the leave-save; locks carry a per-session token.
+  **B3** shutdown voids active jobs before the final save. **B4** urgent saves queue even during an autosave.
+  **B5** corrupt records are backed up to `p_<id>_corrupt_<t>` and reset instead of locking the player out.
+  **B6** lock stale 90 s, load retries ~100 s.
+- **C2:** "Drive" ProximityPrompt seats the owner (server-side `Seat:Sit`). **A3:** empty cars are server-owned.
+- **E1/E2 (first minutes):** first Courier Run uses the 3 addresses nearest the Depot, nearest-next order, with a
+  walkable time limit; every run's limit and pay scale with route length. First delivery pays at least $400 and the
+  Noodle Cart costs $400, so the tutorial promise holds (unit-tested). Tutorial suggests spawning the free car.
+- **D1/D2/C6/C7/C8 (UI):** goal card moved under the stats panel; phone UI scale floor 0.8 with 56 px buttons
+  (≥ 44 pt); menu cards auto-size; live cooldown countdown; gamepad focus kept on re-render; result-card and toast
+  ordering bugs fixed. **C4** analog throttle eases. **C5** cars stream atomically; ground/roads Persistent.
+  **E3** mailboxes moved inside the delivery radius, drop markers added. Vault Job abandon cooldown = fail cooldown.
+- **Automated:** `./scripts/check.sh` → format OK, 29 files compile, **40/40 unit tests**, smoke OK (741 parts,
+  28 gameplay points clear, 5 vehicles, full UI), rojo build OK.
